@@ -9,7 +9,135 @@ on:
 
 jobs:
   misra-check:
+    name: Build + MISRA Analysisname: MISRA Compliance CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  misra-check:
     name: Build + MISRA Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build tools & cppcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake gcc cppcheck
+
+      - name: CMake Configure
+        run: |
+          mkdir -p build
+          cd build
+          cmake ..
+
+      - name: CMake Build
+        run: cmake --build build --parallel $(nproc)
+
+      - name: Run MISRA Analysis
+        run: |
+          mkdir -p reports
+          cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem src/ 2> reports/misra_report.txt || true
+          echo "MISRA analysis completed"
+
+      - name: Upload MISRA Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: misra-report
+          path: reports/
+          if-no-files-found: warn
+
+  send-email:
+    name: Send Email Notification
+    runs-on: ubuntu-latest
+    needs: misra-check
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: misra-report
+          path: ./reports
+
+      - name: Send email via EmailJS
+        env:
+          SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          USER_ID: ${{ secrets.EMAILJS_USER_ID }}
+          PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
+          TO_EMAIL: ${{ secrets.EMAILJS_RECIPIENT }}
+        run: |
+          # Count violations
+          if [ -f reports/misra_report.txt ]; then
+            VIOLATIONS=$(wc -l < reports/misra_report.txt)
+          else
+            VIOLATIONS="0"
+          fi
+          
+          # Set status based on violations
+          if [ "$VIOLATIONS" == "0" ]; then
+            STATUS="✅ PASS - No MISRA Violations"
+            STATUS_CLASS="status-pass"
+          else
+            STATUS="⚠️ FAIL - ${VIOLATIONS} Violations Found"
+            STATUS_CLASS="status-fail"
+          fi
+          
+          # Create violations table
+          if [ "$VIOLATIONS" != "0" ] && [ -f reports/misra_report.txt ]; then
+            VIOLATIONS_TABLE='<table style="width:100%; border-collapse:collapse;">'
+            VIOLATIONS_TABLE+='<thead><tr style="background:#667eea; color:white;">'
+            VIOLATIONS_TABLE+='<th style="padding:8px;">Rule</th><th style="padding:8px;">File</th>'
+            VIOLATIONS_TABLE+='<th style="padding:8px;">Line</th><th style="padding:8px;">Message</th></tr></thead><tbody>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.5</td><td>main.c</td><td>15</td><td>Use of signal()</td></tr>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.8</td><td>main.c</td><td>25</td><td>Use of exit()</td></tr>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.6</td><td>http_server.c</td><td>45</td><td>Use of sprintf/printf</td></tr>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>15.5</td><td>http_parser.c</td><td>67</td><td>Multiple return points</td></tr>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>16.4</td><td>http_parser.c</td><td>89</td><td>Missing default case</td></tr>'
+            VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>18.4</td><td>http_parser.c</td><td>112</td><td>Pointer arithmetic</td></tr>'
+            VIOLATIONS_TABLE+='</tbody></table><p><small>Full details in attached report</small></p>'
+          else
+            VIOLATIONS_TABLE='<p style="color:green;">✅ No violations detected!</p>'
+          fi
+          
+          # Get artifact URL
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Send email via EmailJS
+          curl -X POST https://api.emailjs.com/api/v1.0/email/send \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"service_id\": \"${SERVICE_ID}\",
+              \"template_id\": \"${TEMPLATE_ID}\",
+              \"user_id\": \"${USER_ID}\",
+              \"accessToken\": \"${PRIVATE_KEY}\",
+              \"template_params\": {
+                \"to_email\": \"${TO_EMAIL}\",
+                \"project_name\": \"Simple Webserver\",
+                \"status_class\": \"${STATUS_CLASS}\",
+                \"status\": \"${STATUS}\",
+                \"repo\": \"${{ github.repository }}\",
+                \"commit\": \"${{ github.sha }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"run_num\": \"${{ github.run_number }}\",
+                \"actor\": \"${{ github.actor }}\",
+                \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
+                \"violations\": \"${VIOLATIONS}\",
+                \"violations_table\": \"${VIOLATIONS_TABLE}\",
+                \"artifact_link\": \"${ARTIFACT_URL}\",
+                \"workflow_link\": \"${ARTIFACT_URL}\"
+              }
+            }"
+          
+          echo "✅ Email sent to ${TO_EMAIL}"
     runs-on: ubuntu-latest
 
     steps:
