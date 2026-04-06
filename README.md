@@ -1,4 +1,4 @@
-# tiny_webserver
+# Simple_webserver
 
 A minimal HTTP/1.1 webserver written in pure C, built as a **MISRA C:2012 compliance demo project**.
 
