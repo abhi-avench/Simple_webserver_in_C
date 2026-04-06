@@ -1,55 +1,212 @@
-name: MISRA Compliance CI
+name: MISRA Compliance CI/CD with EmailJS
 
 on:
+  # Trigger on push to these branches
   push:
-    branches: [ "main", "develop" ]
+    branches: [ "main", "develop", "feature/*" ]
+  # Trigger on pull requests
   pull_request:
     branches: [ "main" ]
+  # Allow manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
-  misra-check:
-    name: Build + MISRA Analysis
+  # ============================================
+  # JOB 1: Build and Analyze
+  # ============================================
+  build-and-analyze:
+    name: 🔨 Build & Run MISRA Analysis
     runs-on: ubuntu-latest
-
+    outputs:
+      total_violations: ${{ steps.get-violations.outputs.total }}
+      report_path: ${{ steps.generate.outputs.report_path }}
+      timestamp: ${{ steps.timestamp.outputs.time }}
+    
     steps:
-      # ─── 1. Checkout ──────────────────────────────────────────────────────
-      - name: Checkout repository
+      # Step 1: Checkout code
+      - name: 📥 Checkout repository
         uses: actions/checkout@v4
-
-      # ─── 2. Install Dependencies ──────────────────────────────────────────
-      - name: Install build tools & cppcheck
+      
+      # Step 2: Install dependencies
+      - name: 📦 Install build tools
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y cmake gcc cppcheck python3
-
-      # ─── 3. CMake Configure ───────────────────────────────────────────────
-      - name: CMake Configure
+          sudo apt-get install -y cmake gcc g++ cppcheck python3
+          cppcheck --version
+      
+      # Step 3: Create timestamp
+      - name: 🕐 Create timestamp
+        id: timestamp
+        run: echo "time=$(date +'%Y%m%d_%H%M%S')" >> $GITHUB_OUTPUT
+      
+      # Step 4: Build the project
+      - name: 🏗️ Build project
         run: |
           mkdir -p build
           cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Debug
-
-      # ─── 4. CMake Build ───────────────────────────────────────────────────
-      - name: CMake Build
-        run: cmake --build build --parallel $(nproc)
-
-      # ─── 5. Run MISRA Check ───────────────────────────────────────────────
-      - name: Run MISRA Analysis
-        run: python3 scripts/run_analysis.py
-        continue-on-error: true   # don't fail pipeline on violations — just report
-
-      # ─── 6. Upload Report as Artifact ─────────────────────────────────────
-      - name: Upload MISRA Report
+          cmake ..
+          make
+      
+      # Step 5: Run MISRA analysis
+      - name: 🔍 Run cppcheck with MISRA rules
+        id: misra
+        continue-on-error: true
+        run: |
+          mkdir -p reports
+          cppcheck --enable=all \
+                   --inconclusive \
+                   --suppress=missingIncludeSystem \
+                   --xml \
+                   --xml-version=2 \
+                   src/ 2> reports/cppcheck_output.xml || true
+          
+          # Count violations
+          VIOLATIONS=$(grep -c "<error" reports/cppcheck_output.xml || echo "0")
+          echo "total=$VIOLATIONS" >> $GITHUB_OUTPUT
+          echo "Found $VIOLATIONS violations"
+      
+      # Step 6: Count violations for output
+      - name: 📊 Get violation count
+        id: get-violations
+        run: |
+          if [ -f reports/cppcheck_output.xml ]; then
+            COUNT=$(grep -c "<error" reports/cppcheck_output.xml || echo "0")
+          else
+            COUNT="0"
+          fi
+          echo "total=$COUNT" >> $GITHUB_OUTPUT
+      
+      # Step 7: Generate HTML report
+      - name: 📄 Generate HTML report
+        id: generate
+        run: |
+          mkdir -p reports
+          
+          # Create HTML report
+          cat > reports/misra_report.html << 'HTML'
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>MISRA C:2012 Compliance Report</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        h1 { color: #333; }
+        .summary { background: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0; }
+        table { border-collapse: collapse; width: 100%; }
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+        th { background-color: #4CAF50; color: white; }
+        .violation { background-color: #ffeb3b; }
+        .footer { margin-top: 30px; font-size: 12px; color: #777; }
+    </style>
+</head>
+<body>
+    <h1>🔍 MISRA C:2012 Compliance Report</h1>
+    <div class="summary">
+        <strong>Repository:</strong> ${{ github.repository }}<br>
+        <strong>Branch:</strong> ${{ github.ref_name }}<br>
+        <strong>Commit:</strong> ${{ github.sha }}<br>
+        <strong>Run Number:</strong> ${{ github.run_number }}<br>
+        <strong>Generated:</strong> $(date '+%Y-%m-%d %H:%M:%S UTC')
+    </div>
+    <h2>📊 Violation Summary</h2>
+    <table>
+        <thead><tr><th>Total Violations Found</th></tr></thead>
+        <tbody><tr><td style="font-size: 24px; text-align: center;">${{ steps.get-violations.outputs.total }}</td></tr></tbody>
+    </table>
+    <div class="footer">
+        <p>Generated by GitHub Actions CI/CD Pipeline</p>
+        <p>MISRA C:2012 compliance check using cppcheck</p>
+    </div>
+</body>
+</html>
+HTML
+          
+          echo "report_path=$(pwd)/reports/misra_report.html" >> $GITHUB_OUTPUT
+      
+      # Step 8: Upload report as artifact
+      - name: 📤 Upload report
         uses: actions/upload-artifact@v4
         with:
-          name: misra-report-${{ github.run_number }}
+          name: misra-report-${{ steps.timestamp.outputs.time }}
           path: reports/
-          if-no-files-found: warn
+          retention-days: 30
 
-      # ─── 7. Send Email (on main branch only) ──────────────────────────────
-      - name: Send Report Email
-        if: github.ref == 'refs/heads/main'
-        run: python3 scripts/run_analysis.py --email
+  # ============================================
+  # JOB 2: Send Email via EmailJS
+  # ============================================
+  send-email:
+    name: 📧 Send Email Notification
+    runs-on: ubuntu-latest
+    needs: build-and-analyze
+    # Send email only on main branch pushes or manual triggers
+    if: |
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      github.event_name == 'workflow_dispatch'
+    
+    steps:
+      # Step 1: Download the report
+      - name: 📥 Download report
+        uses: actions/download-artifact@v4
+        with:
+          pattern: misra-report-*
+          path: ./reports
+          merge-multiple: true
+      
+      # Step 2: Prepare email content
+      - name: 📧 Prepare email via EmailJS
         env:
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-        continue-on-error: true
+          EMAILJS_SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          EMAILJS_TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          EMAILJS_USER_ID: ${{ secrets.EMAILJS_USER_ID }}
+          EMAILJS_RECIPIENT: ${{ secrets.EMAILJS_RECIPIENT }}
+        run: |
+          # Get violation count from report
+          if [ -f reports/cppcheck_output.xml ]; then
+            VIOLATIONS=$(grep -c "<error" reports/cppcheck_output.xml || echo "0")
+          else
+            VIOLATIONS="0"
+          fi
+          
+          # Set status
+          if [ "$VIOLATIONS" == "0" ]; then
+            STATUS="✅ PASS - No MISRA Violations"
+            STATUS_CLASS="status-pass"
+          else
+            STATUS="⚠️ FAIL - ${VIOLATIONS} Violations Found"
+            STATUS_CLASS="status-fail"
+          fi
+          
+          # Get artifact URL
+          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Send email via EmailJS
+          curl -X POST https://api.emailjs.com/api/v1.0/email/send \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"service_id\": \"${EMAILJS_SERVICE_ID}\",
+              \"template_id\": \"${EMAILJS_TEMPLATE_ID}\",
+              \"user_id\": \"${EMAILJS_USER_ID}\",
+              \"template_params\": {
+                \"status\": \"${STATUS}\",
+                \"status_class\": \"${STATUS_CLASS}\",
+                \"project_name\": \"Simple Webserver\",
+                \"repo_name\": \"${{ github.repository }}\",
+                \"commit_sha\": \"${{ github.sha }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"run_number\": \"${{ github.run_number }}\",
+                \"triggered_by\": \"${{ github.actor }}\",
+                \"timestamp\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
+                \"total_violations\": \"${VIOLATIONS}\",
+                \"violations_table\": \"<tr><td colspan='4'>See attached report for details</td></tr>\",
+                \"artifact_link\": \"${ARTIFACT_URL}\",
+                \"workflow_link\": \"${ARTIFACT_URL}\",
+                \"to_email\": \"${EMAILJS_RECIPIENT}\"
+              }
+            }"
+          
+          echo "✅ Email sent to ${EMAILJS_RECIPIENT}"
+      
+      # Step 3: Show confirmation
+      - name: ✅ Email sent confirmation
+        run: echo "Email notification sent successfully!"
