@@ -40,7 +40,7 @@ int main(void)
     (void)signal(SIGTERM, sig_handler);  /* MISRA Rule 21.5 */
 
     printf("===========================================\n");  /* MISRA Rule 21.6 */
-    printf("  Tiny Webserver v%s\n", SERVER_VERSION_STR);   /* MISRA Rule 21.6 */
+    printf("  Simple Webserver v%s\n", SERVER_VERSION_STR);   /* MISRA Rule 21.6 */
     printf("===========================================\n");  /* MISRA Rule 21.6 */
 
     /* Build server config */
