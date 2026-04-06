@@ -1,0 +1,56 @@
+
+name: MISRA Compliance CI
+
+on:
+  push:
+    branches: [ "main", "develop" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  misra-check:
+    name: Build + MISRA Analysis
+    runs-on: ubuntu-latest
+
+    steps:
+      # ─── 1. Checkout ──────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ─── 2. Install Dependencies ──────────────────────────────────────────
+      - name: Install build tools & cppcheck
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y cmake gcc cppcheck python3
+
+      # ─── 3. CMake Configure ───────────────────────────────────────────────
+      - name: CMake Configure
+        run: |
+          mkdir -p build
+          cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Debug
+
+      # ─── 4. CMake Build ───────────────────────────────────────────────────
+      - name: CMake Build
+        run: cmake --build build --parallel $(nproc)
+
+      # ─── 5. Run MISRA Check ───────────────────────────────────────────────
+      - name: Run MISRA Analysis
+        run: python3 scripts/run_analysis.py
+        continue-on-error: true   # don't fail pipeline on violations — just report
+
+      # ─── 6. Upload Report as Artifact ─────────────────────────────────────
+      - name: Upload MISRA Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: misra-report-${{ github.run_number }}
+          path: reports/
+          if-no-files-found: warn
+
+      # ─── 7. Send Email (on main branch only) ──────────────────────────────
+      - name: Send Report Email
+        if: github.ref == 'refs/heads/main'
+        run: python3 scripts/run_analysis.py --email
+        env:
+          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
+        continue-on-error: true
