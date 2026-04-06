@@ -62,7 +62,6 @@ void logger_write(log_level_t level,
      * not recommended in safety-critical embedded code */
     now     = time(NULL);              /* MISRA Rule 21.10 */
     tm_info = localtime(&now);         /* MISRA Rule 21.10 */
-    tm_info = localtime(&now); 
     if (tm_info != NULL)
     {
         /* [MISRA VIOLATION] Rule 21.6 — strftime is stdio-adjacent */
