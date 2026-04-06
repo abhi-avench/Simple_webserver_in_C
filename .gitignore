@@ -20,3 +20,5 @@ Thumbs.db
 
 # cppcheck dump files
 *.dump
+
+.env
