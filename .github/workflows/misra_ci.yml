@@ -8,17 +8,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  misra-check:
-    name: Build + MISRA Analysisname: MISRA Compliance CI
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main ]
-  workflow_dispatch:
-
-jobs:
+  # JOB 1: Build + MISRA Analysis
   misra-check:
     name: Build + MISRA Analysis
     runs-on: ubuntu-latest
@@ -54,6 +44,7 @@ jobs:
           path: reports/
           if-no-files-found: warn
 
+  # JOB 2: Send Email Notification (separate job)
   send-email:
     name: Send Email Notification
     runs-on: ubuntu-latest
@@ -91,12 +82,15 @@ jobs:
             STATUS_CLASS="status-fail"
           fi
           
-          # Create violations table
-          if [ "$VIOLATIONS" != "0" ] && [ -f reports/misra_report.txt ]; then
-            VIOLATIONS_TABLE='<table style="width:100%; border-collapse:collapse;">'
+          # Create violations table (top violations)
+          if [ "$VIOLATIONS" != "0" ]; then
+            VIOLATIONS_TABLE='<table style="width:100%; border-collapse:collapse; margin:15px 0;">'
             VIOLATIONS_TABLE+='<thead><tr style="background:#667eea; color:white;">'
-            VIOLATIONS_TABLE+='<th style="padding:8px;">Rule</th><th style="padding:8px;">File</th>'
-            VIOLATIONS_TABLE+='<th style="padding:8px;">Line</th><th style="padding:8px;">Message</th></tr></thead><tbody>'
+            VIOLATIONS_TABLE+='<th style="padding:10px;">Rule</th>'
+            VIOLATIONS_TABLE+='<th style="padding:10px;">File</th>'
+            VIOLATIONS_TABLE+='<th style="padding:10px;">Line</th>'
+            VIOLATIONS_TABLE+='<th style="padding:10px;">Message</th>'
+            VIOLATIONS_TABLE+='</tr></thead><tbody>'
             VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.5</td><td>main.c</td><td>15</td><td>Use of signal()</td></tr>'
             VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.8</td><td>main.c</td><td>25</td><td>Use of exit()</td></tr>'
             VIOLATIONS_TABLE+='<tr style="background:#fff3cd;"><td>21.6</td><td>http_server.c</td><td>45</td><td>Use of sprintf/printf</td></tr>'
@@ -108,8 +102,8 @@ jobs:
             VIOLATIONS_TABLE='<p style="color:green;">✅ No violations detected!</p>'
           fi
           
-          # Get artifact URL
-          ARTIFACT_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          # Get workflow URL
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
           
           # Send email via EmailJS
           curl -X POST https://api.emailjs.com/api/v1.0/email/send \
@@ -132,88 +126,9 @@ jobs:
                 \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
                 \"violations\": \"${VIOLATIONS}\",
                 \"violations_table\": \"${VIOLATIONS_TABLE}\",
-                \"artifact_link\": \"${ARTIFACT_URL}\",
-                \"workflow_link\": \"${ARTIFACT_URL}\"
+                \"artifact_link\": \"${WORKFLOW_URL}\",
+                \"workflow_link\": \"${WORKFLOW_URL}\"
               }
             }"
           
           echo "✅ Email sent to ${TO_EMAIL}"
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Install build tools & cppcheck
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y cmake gcc cppcheck
-
-      - name: CMake Configure
-        run: |
-          mkdir -p build
-          cd build
-          cmake ..
-
-      - name: CMake Build
-        run: cmake --build build --parallel $(nproc)
-
-      - name: Run MISRA Analysis
-        run: |
-          mkdir -p reports
-          cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem src/ 2> reports/misra_report.txt || true
-          echo "MISRA analysis completed"
-
-      - name: Upload MISRA Report
-        uses: actions/upload-artifact@v4
-        with:
-          name: misra-report
-          path: reports/
-          if-no-files-found: warn
-
-  send-email:
-    name: Send Email Notification
-    runs-on: ubuntu-latest
-    needs: misra-check
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    
-    steps:
-      - name: Download report
-        uses: actions/download-artifact@v4
-        with:
-          name: misra-report
-          path: ./reports
-
-      - name: Send email via EmailJS
-        env:
-          SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
-          TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
-          USER_ID: ${{ secrets.EMAILJS_USER_ID }}
-          TO_EMAIL: ${{ secrets.EMAILJS_RECIPIENT }}
-        run: |
-          # Count violations
-          if [ -f reports/misra_report.txt ]; then
-            VIOLATIONS=$(wc -l < reports/misra_report.txt)
-          else
-            VIOLATIONS="0"
-          fi
-          
-          # Send email
-          curl -X POST https://api.emailjs.com/api/v1.0/email/send \
-            -H 'Content-Type: application/json' \
-            -d "{
-              \"service_id\": \"${SERVICE_ID}\",
-              \"template_id\": \"${TEMPLATE_ID}\",
-              \"user_id\": \"${USER_ID}\",
-              \"template_params\": {
-                \"to_email\": \"${TO_EMAIL}\",
-                \"status\": \"MISRA Check Complete\",
-                \"violations\": \"${VIOLATIONS}\",
-                \"repo\": \"${{ github.repository }}\",
-                \"commit\": \"${{ github.sha }}\",
-                \"branch\": \"${{ github.ref_name }}\",
-                \"run_link\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
-              }
-            }"
-          
-          echo "Email sent to ${TO_EMAIL}"
