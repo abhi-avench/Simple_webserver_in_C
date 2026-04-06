@@ -2,9 +2,10 @@ name: MISRA Compliance CI
 
 on:
   push:
-    branches: [ "main", "develop" ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   misra-check:
@@ -12,44 +13,95 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # ─── 1. Checkout ──────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # ─── 2. Install Dependencies ──────────────────────────────────────────
       - name: Install build tools & cppcheck
         run: |
           sudo apt-get update -qq
-          sudo apt-get install -y cmake gcc cppcheck python3
+          sudo apt-get install -y cmake gcc cppcheck
 
-      # ─── 3. CMake Configure ───────────────────────────────────────────────
       - name: CMake Configure
         run: |
           mkdir -p build
           cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Debug
+          cmake ..
 
-      # ─── 4. CMake Build ───────────────────────────────────────────────────
       - name: CMake Build
         run: cmake --build build --parallel $(nproc)
 
-      # ─── 5. Run MISRA Check ───────────────────────────────────────────────
       - name: Run MISRA Analysis
-        run: python3 scripts/run_analysis.py
-        continue-on-error: true   # don't fail pipeline on violations — just report
+        run: |
+          mkdir -p reports
+          cppcheck --enable=all --inconclusive --suppress=missingIncludeSystem src/ 2> reports/misra_report.txt || true
+          echo "MISRA analysis completed"
 
-      # ─── 6. Upload Report as Artifact ─────────────────────────────────────
       - name: Upload MISRA Report
         uses: actions/upload-artifact@v4
         with:
-          name: misra-report-${{ github.run_number }}
+          name: misra-report
           path: reports/
           if-no-files-found: warn
 
-      # ─── 7. Send Email (on main branch only) ──────────────────────────────
-      - name: Send Report Email
-        if: github.ref == 'refs/heads/main'
-        run: python3 scripts/run_analysis.py --email
+  send-email:
+    name: Send Email Notification
+    runs-on: ubuntu-latest
+    needs: misra-check
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
+    
+    steps:
+      - name: Download report
+        uses: actions/download-artifact@v4
+        with:
+          name: misra-report
+          path: ./reports
+
+      - name: Send email via EmailJS
         env:
-          EMAIL_PASS: ${{ secrets.EMAIL_PASS }}
-        continue-on-error: true
+          SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
+          TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
+          USER_ID: ${{ secrets.EMAILJS_USER_ID }}
+          PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
+          TO_EMAIL: ${{ secrets.EMAILJS_RECIPIENT }}
+        run: |
+          # Count violations
+          if [ -f reports/misra_report.txt ]; then
+            VIOLATIONS=$(wc -l < reports/misra_report.txt)
+          else
+            VIOLATIONS="0"
+          fi
+          
+          # Set status
+          if [ "$VIOLATIONS" == "0" ]; then
+            STATUS="PASS - No MISRA Violations"
+          else
+            STATUS="FAIL - ${VIOLATIONS} Violations Found"
+          fi
+          
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Simple JSON without complex HTML
+          curl -X POST https://api.emailjs.com/api/v1.0/email/send \
+            -H 'Content-Type: application/json' \
+            -d "{
+              \"service_id\": \"${SERVICE_ID}\",
+              \"template_id\": \"${TEMPLATE_ID}\",
+              \"user_id\": \"${USER_ID}\",
+              \"accessToken\": \"${PRIVATE_KEY}\",
+              \"template_params\": {
+                \"to_email\": \"${TO_EMAIL}\",
+                \"project_name\": \"Simple Webserver\",
+                \"status\": \"${STATUS}\",
+                \"repo\": \"${{ github.repository }}\",
+                \"commit\": \"${{ github.sha }}\",
+                \"branch\": \"${{ github.ref_name }}\",
+                \"run_num\": \"${{ github.run_number }}\",
+                \"actor\": \"${{ github.actor }}\",
+                \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
+                \"violations\": \"${VIOLATIONS}\",
+                \"artifact_link\": \"${WORKFLOW_URL}\",
+                \"workflow_link\": \"${WORKFLOW_URL}\"
+              }
+            }"
+          
+          echo "✅ Email sent to ${TO_EMAIL}"

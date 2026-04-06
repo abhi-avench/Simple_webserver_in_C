@@ -106,3 +106,12 @@ Push to `main` or `develop` → GitHub Actions will:
 - Understand common MISRA C:2012 violations in real C code
 - Practice fixing violations and re-running analysis
 - Build a CI/CD pipeline for embedded code compliance
+
+
+
+
+
+```
+cmake -S . -B build
+cmake --build build
+```
