@@ -61,6 +61,7 @@ jobs:
           SERVICE_ID: ${{ secrets.EMAILJS_SERVICE_ID }}
           TEMPLATE_ID: ${{ secrets.EMAILJS_TEMPLATE_ID }}
           USER_ID: ${{ secrets.EMAILJS_USER_ID }}
+          PRIVATE_KEY: ${{ secrets.EMAILJS_PRIVATE_KEY }}
           TO_EMAIL: ${{ secrets.EMAILJS_RECIPIENT }}
         run: |
           # Count violations
@@ -70,22 +71,37 @@ jobs:
             VIOLATIONS="0"
           fi
           
-          # Send email
+          # Set status
+          if [ "$VIOLATIONS" == "0" ]; then
+            STATUS="PASS - No MISRA Violations"
+          else
+            STATUS="FAIL - ${VIOLATIONS} Violations Found"
+          fi
+          
+          WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          
+          # Simple JSON without complex HTML
           curl -X POST https://api.emailjs.com/api/v1.0/email/send \
             -H 'Content-Type: application/json' \
             -d "{
               \"service_id\": \"${SERVICE_ID}\",
               \"template_id\": \"${TEMPLATE_ID}\",
               \"user_id\": \"${USER_ID}\",
+              \"accessToken\": \"${PRIVATE_KEY}\",
               \"template_params\": {
                 \"to_email\": \"${TO_EMAIL}\",
-                \"status\": \"MISRA Check Complete\",
-                \"violations\": \"${VIOLATIONS}\",
+                \"project_name\": \"Simple Webserver\",
+                \"status\": \"${STATUS}\",
                 \"repo\": \"${{ github.repository }}\",
                 \"commit\": \"${{ github.sha }}\",
                 \"branch\": \"${{ github.ref_name }}\",
-                \"run_link\": \"https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+                \"run_num\": \"${{ github.run_number }}\",
+                \"actor\": \"${{ github.actor }}\",
+                \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
+                \"violations\": \"${VIOLATIONS}\",
+                \"artifact_link\": \"${WORKFLOW_URL}\",
+                \"workflow_link\": \"${WORKFLOW_URL}\"
               }
             }"
           
-          echo "Email sent to ${TO_EMAIL}"
+          echo "✅ Email sent to ${TO_EMAIL}"
