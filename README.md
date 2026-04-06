@@ -2,7 +2,7 @@ Here's your **cppcheck-oriented README** focused on static analysis for embedded
 
 ---
 
-# 🔍 Simple_Webserver - MISRA C:2012 Static Analysis Demo
+# A Simple_HTTP_Webserver - MISRA C:2012 Static Analysis Demo
 
 <div align="center">
 
@@ -16,7 +16,7 @@ Here's your **cppcheck-oriented README** focused on static analysis for embedded
 
 ---
 
-## 🎯 What is This Project?
+## What is This Project?
 
 This is an **educational demonstration** of **static code analysis** using **cppcheck** for **MISRA C:2012 compliance** in embedded/safety-critical systems.
 
@@ -29,7 +29,7 @@ The project contains a functional HTTP web server written in C with **intentiona
 
 ---
 
-## 🏗️ Why Static Analysis for Embedded Industry?
+## Why Static Analysis for Embedded Industry?
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -110,7 +110,7 @@ cmake --build build
 
 ---
 
-## 🔍 Static Analysis with cppcheck
+## Static Analysis with cppcheck
 
 ### Run MISRA Analysis Locally
 
@@ -147,7 +147,7 @@ cd build && make misra_check
 
 ---
 
-## 📊 MISRA C:2012 Violations (Intentional)
+## MISRA C:2012 Violations (Intentional)
 
 | Rule      | Severity | File            | Description              | Embedded Impact                         |
 | --------- | -------- | --------------- | ------------------------ | --------------------------------------- |
@@ -177,7 +177,7 @@ cd build && make misra_check
 
 ---
 
-## 🚀 CI/CD Pipeline (GitHub Actions)
+## CI/CD Pipeline (GitHub Actions)
 
 ### What the Pipeline Does
 
@@ -209,15 +209,15 @@ Workflow: MISRA Compliance CI
 
 ---
 
-## 📧 Email Notifications via EmailJS
+## Email Notifications via EmailJS
 
 When violations are found, an automated email is sent with:
 
-- ✅ Total violation count
-- ✅ Severity breakdown (Error/Warning/Style)
-- ✅ Top violations table
-- ✅ Link to download full report
-- ✅ Link to GitHub Actions run
+- Total violation count
+- Severity breakdown (Error/Warning/Style)
+- Top violations table
+- Link to download full report
+- Link to GitHub Actions run
 
 ### Setup Email Notifications
 
@@ -233,7 +233,7 @@ Add these secrets in **GitHub Settings → Secrets → Actions**:
 
 ---
 
-## 🔬 cppcheck Integration Examples
+## cppcheck Integration Examples
 
 ### Example 1: Basic MISRA Check
 
@@ -279,7 +279,7 @@ cppcheck --addon=misra_addon.json src/
 
 ---
 
-## 📈 Static Analysis in CI/CD Pipeline
+## Static Analysis in CI/CD Pipeline
 
 ### Adding cppcheck to Your Workflow
 
@@ -293,7 +293,7 @@ cppcheck --addon=misra_addon.json src/
 
     # Fail build if violations found (optional)
     if grep -q "<error" misra_report.xml; then
-      echo "❌ MISRA violations found!"
+      echo "MISRA violations found!"
       exit 1
     fi
 ```
@@ -313,7 +313,7 @@ fi
 
 ---
 
-## 🎯 Learning Outcomes
+## Learning Outcomes
 
 After completing this project, you will understand:
 
@@ -340,7 +340,7 @@ After completing this project, you will understand:
 
 ---
 
-## 🛠️ Tools Used
+## Tools Used
 
 | Tool               | Purpose                         | Industry Standard       |
 | ------------------ | ------------------------------- | ----------------------- |
