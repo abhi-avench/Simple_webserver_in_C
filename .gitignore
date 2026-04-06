@@ -1,0 +1,22 @@
+# Build artifacts
+build/
+*.o
+*.a
+*.so
+tiny_webserver
+
+# Generated reports
+reports/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# cppcheck dump files
+*.dump
