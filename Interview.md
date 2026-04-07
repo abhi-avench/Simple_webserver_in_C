@@ -49,4 +49,3 @@ This aligns with the documented positioning of both tools around defects and com
 - How do you reduce noise in reports?
 - Can static analysis replace code review or testing?
 
-If you want, I can turn this into a 1-page interview cheat sheet with model answers for Cppcheck, PC-lint, and MISRA.
