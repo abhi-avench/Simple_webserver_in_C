@@ -99,6 +99,7 @@ jobs:
                 \"actor\": \"${{ github.actor }}\",
                 \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
                 \"violations\": \"${VIOLATIONS}\",
+                 \"artifact_link\": \"${ARTIFACT_URL}\",
                 \"artifact_link\": \"${WORKFLOW_URL}\",
                 \"workflow_link\": \"${WORKFLOW_URL}\"
               }
