@@ -2,9 +2,9 @@ name: MISRA Compliance CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: misra-check
     if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main')
-    
+
     steps:
       - name: Download report
         uses: actions/download-artifact@v4
@@ -70,16 +70,16 @@ jobs:
           else
             VIOLATIONS="0"
           fi
-          
+
           # Set status
           if [ "$VIOLATIONS" == "0" ]; then
             STATUS="PASS - No MISRA Violations"
           else
             STATUS="FAIL - ${VIOLATIONS} Violations Found"
           fi
-          
+
           WORKFLOW_URL="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          
+
           # Simple JSON without complex HTML
           curl -X POST https://api.emailjs.com/api/v1.0/email/send \
             -H 'Content-Type: application/json' \
@@ -99,10 +99,9 @@ jobs:
                 \"actor\": \"${{ github.actor }}\",
                 \"time\": \"$(date '+%Y-%m-%d %H:%M:%S UTC')\",
                 \"violations\": \"${VIOLATIONS}\",
-                 \"artifact_link\": \"${ARTIFACT_URL}\",
-                \"artifact_link\": \"${WORKFLOW_URL}\",
+                \"artifact_link\": \"${{ github.server_url }}/${{ github.repository }}/actions/artifacts/${{ github.run_id }}_URL}\",
                 \"workflow_link\": \"${WORKFLOW_URL}\"
               }
             }"
-          
+
           echo "✅ Email sent to ${TO_EMAIL}"
